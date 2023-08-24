@@ -28,10 +28,11 @@
 
  linux compile:
 
- gcc -O3 -g -flto -fPIC tox_generic_bot.c -fno-omit-frame-pointer -fsanitize=address -static-libasan -Wl,-Bstatic $(pkg-config --cflags --libs libsodium) -Wl,-Bdynamic -pthread -o tox_generic_bot
+ gcc -O3 -std=c99 -g -flto -fPIC tox_generic_bot.c -fno-omit-frame-pointer -fsanitize=address -static-libasan -Wl,-Bstatic $(pkg-config --cflags --libs libsodium) -Wl,-Bdynamic -pthread -o tox_generic_bot
 
 */
 
+// ***** gcc_send_lossless_packet:Failed to add payload to send array
 
 #define _GNU_SOURCE
 
@@ -54,7 +55,7 @@ static const char global_version_string[] = "0.99.0";
 #ifdef MIN_LOGGER_LEVEL
 #undef MIN_LOGGER_LEVEL
 #endif
-#define MIN_LOGGER_LEVEL LOGGER_LEVEL_DEBUG
+#define MIN_LOGGER_LEVEL LOGGER_LEVEL_INFO
 // define this before including toxcore amalgamation -------
 
 // include toxcore amalgamation no ToxAV --------
@@ -68,8 +69,8 @@ enum CUSTOM_LOG_LEVEL {
   CLL_DEBUG = 9,
 };
 
-#define BOT_NAME "ToxNgckickBot"
-#define CURRENT_LOG_LEVEL CLL_DEBUG // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
+#define BOT_NAME "ToxGenericBot"
+#define CURRENT_LOG_LEVEL CLL_INFO // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
 #define PROXY_HOST_TOR_DEFAULT "127.0.0.1"
 #define PROXY_PORT_TOR_DEFAULT 9050
 static const uint8_t *bot_name_str = BOT_NAME;
@@ -569,12 +570,11 @@ static void bootstrap_tox(Tox *tox)
     tox_bootstrap(tox, "local", 7766, (uint8_t *)"2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", NULL);
     for (int i = 0; nodes1[i].ip; i++) {
         uint8_t *key = (uint8_t *)calloc(1, 100);
-        hex_string_to_bin2(nodes1[i].key, key);
-        if (!key)
-        {
+        if (!key) {
             dbg(CLL_INFO, "bootstrap_tox:continue ...\n");
             continue;
         }
+        hex_string_to_bin2(nodes1[i].key, key);
         if (use_tor == 0) {
             tox_bootstrap(tox, nodes1[i].ip, nodes1[i].udp_port, key, NULL);
         }
@@ -693,6 +693,8 @@ int main(int argc, char *argv[])
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
+    int need_join = 1;
+
     // ----------- main loop -----------
     uint32_t loops = 0;
     while (main_loop_running)
@@ -702,6 +704,24 @@ int main(int argc, char *argv[])
             if ((loops % 100) == 0) {
                 bootstrap_tox(tox);
                 update_tox_savedata(tox);
+            }
+        } else {
+            if (need_join == 1) {
+                // --------- custom part ---------
+                const char *trifa_ngc_group_hex = "154b3973bd0e66304fd6179a8a54759073649e09e6e368f0334fc6ed666ab762";
+                uint8_t *trifa_ngc_group_bin = (uint8_t *)calloc(1, 100);
+                hex_string_to_bin2(trifa_ngc_group_hex, trifa_ngc_group_bin);
+                Tox_Err_Group_Join ngc_join_error;
+                tox_group_join(tox, trifa_ngc_group_bin, bot_name_str, bot_name_len, NULL, 0, &ngc_join_error);
+                dbg(CLL_INFO, "joing group: res=%d\n", ngc_join_error);
+                free(trifa_ngc_group_bin);
+                tox_iterate(tox, NULL);
+                yieldcpu(tox_iteration_interval(tox));
+                tox_iterate(tox, NULL);
+                yieldcpu(tox_iteration_interval(tox));
+                update_tox_savedata(tox);
+                need_join = 0;
+                // --------- custom part ---------
             }
         }
         tox_iterate(tox, NULL);
